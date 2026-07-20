@@ -1,0 +1,72 @@
+# ==========================================
+# 项目：小说视觉化阅读助手 (Novel Visual Reader)
+# ==========================================
+
+# 1. 核心技术栈与版本规范 (Core Tech Stack)
+- 语言：Python 3.10+ (强制使用类型注解 Type Hinting)
+- 后端：FastAPI (异步优先，严格使用 APIRouter 进行模块化划分)
+- 前端：Streamlit (轻量页面，用于 MVP 快速验证与交互渲染)
+- 数据校验：Pydantic v2 (用于 API 数据进出校验及 LLM 结构化输出)
+- LLM 接口：Instructor + OpenAI / DeepSeek API (强制结构化解析)
+
+# 2. 项目目录结构规范 (Directory Structure)
+AI 在创建新文件、重构代码或使用 Builder 模式时，必须严格遵守以下目录结构：
+```text
+novel-visual-reader/
+├── .cursorrules           # 本配置文件
+├── backend/               # 后端 FastAPI 代码
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── main.py        # 路由挂载与应用初始化
+│   │   ├── api/           # 接口路由 (router)
+│   │   ├── core/          # 配置、安全性、LLM 客户端初始化
+│   │   ├── models/        # Pydantic 校验模型与数据 Schema
+│   │   ├── services/      # 核心业务逻辑 (小说解析、图片生成、RAG)
+│   │   └── utils/         # 通用工具函数
+├── frontend/              # 前端 Streamlit 代码
+│   ├── app.py             # Streamlit 入口
+│   └── components/        # 自定义前端组件
+├── data/                  # 本地数据存储
+│   └── novels/            # 存放生成的 .json 世界浓缩文件
+└── requirements.txt       # 依赖声明
+#3.严格防 AI 幻觉与代码质量守则(Anti-Hallucination & Quality)
+【零容忍幻觉】：在编写调用第三方库（如 FastAPI, Streamlit, Pydantic, Instructor）的代码时，如果对 API 版本、参数不确定，必须参考官方最新稳定文档，严禁凭空捏造不存在的参数、类或方法。
+【强类型约束】：所有函数参数、返回值必须声明类型。严禁在非必要时使用 Any。
+【类型注解】：优先使用 from typing import List, Dict, Optional 等。
+【异步规范】：FastAPI 的路由函数和网络 I/O 操作（如请求 LLM API、图片生成 API）必须使用 async def，并配合 httpx 或 aiohttp 进行异步调用。
+- 【知识库自维护（硬性要求）】：
+  * 项目的根目录下存在 `docs/LLM_WIKI.md`，这是本项目的核心知识库。
+  * 无论是使用 Chat 还是 Builder 模式，只要你修改了以下内容：
+    1. `backend/app/models/` 下的 Pydantic 模型；
+    2. `backend/app/api/` 下的 API 接口契约；
+    3. `data/novels/` 的文件夹物理结构设计。
+  * 你必须在完成代码修改后，**自动且立刻**更新 `docs/LLM_WIKI.md` 中的对应章节，确保文档与最新代码 100% 同步。
+#4. Pydantic 与 LLM 结构化输出规范 (LLM Structured Outputs)
+为了防止大模型输出脏数据，本项目禁止使用正则或 json.loads() 手工解析大模型的返回结果。
+必须且只能使用 Pydantic 定义数据模型。
+使用 Instructor 库（或大模型原生 response_format={"type": "json_object"} 并配合 Pydantic）来接收结构化数据。
+示例规范（AI 编写 LLM 提取逻辑时必须参考此模式）：
+Python
+from pydantic import BaseModel, Field
+from typing import List
+class Character(BaseModel):
+    name: str = Field(..., description="人物姓名")
+    visual_description: str = Field(..., description="用于生成头像的英文视觉描述，包含发色、瞳色、服装和特征")
+    relation: str = Field(..., description="该人物与主角当前的关系状态")
+
+class ChapterData(BaseModel):
+    chapter_num: int
+    location: str = Field(..., description="本章发生的地理位置名称")
+    location_prompt: str = Field(..., description="用于生成该场景背景图的英文 Stable Diffusion Prompt")
+    characters: List[Character] = Field(default=[], description="本章新登场或发生关系变化的人物列表")
+    summary: str = Field(..., description="本章的核心剧情摘要（不超过100字）")
+#5. 前端 Streamlit 编写规范 (Streamlit Rules)
+保持无状态/会话状态管理：由于 Streamlit 每次交互都会重绘页面，必须合理使用 st.session_state 来存储当前小说、当前章节、已解锁的地图和人物卡。
+严禁在 Streamlit 主线程中进行同步的、耗时极长的 AI 生成请求，必须使用 st.spinner 或将耗时任务委托给 FastAPI 后端异步处理。
+界面组件排版：
+使用 st.sidebar 展示当前小说目录、导入按钮。
+页面主体使用 st.columns 划分“小说阅读区”与“动态大地图/人物卡展示区”。
+#6. 后端 FastAPI 编写规范 (FastAPI Rules)
+启动配置：使用 uvicorn 运行，统一配置 CORS 跨域，确保 Streamlit 前端能够正常跨域请求。
+错误处理：所有 API 必须包裹 try-except 块，并返回标准的 HTTPException(status_code=..., detail=...)。
+响应模型：每个路由必须声明 response_model，确保输出的数据格式受到 Pydantic 的严格约束。
